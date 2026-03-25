@@ -1,10 +1,14 @@
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>   // Library for I2C LCD
+#include <SPI.h>
+#include <MFRC522.h>
 
 // I2C connections
 // SDA -> A4
 // SCL -> A5
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // LCD address and size
+
+void printUid(const MFRC522::Uid &uid);
 
 // Ultrasonic sensor pins
 const int trigLeft = 2;
@@ -25,6 +29,16 @@ int distanceRight;
 int followRange = 40;   // Maximum distance to follow (cm)
 int stopRange = 10;     // Minimum safe distance (cm)
 
+// RC522 RFID
+//Pins for RC522:
+// SDA/SS -> D8
+// RST    -> A0
+// MOSI   -> D11
+// MISO   -> D12
+// SCK    -> D13
+constexpr uint8_t RC522_SS_PIN  = 8;
+constexpr uint8_t RC522_RST_PIN = A0;
+MFRC522 rfid(RC522_SS_PIN, RC522_RST_PIN);
 
 // Measure distance using ultrasonic sensor
 int measureDistance(int trigPin, int echoPin) {
@@ -60,6 +74,11 @@ void setup() {
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
+
+  // Initialize RFID
+  SPI.begin();
+  rfid.PCD_Init();
+  Serial.println("RC522 ready. Tap a tag/card...");
 }
 
 
@@ -137,6 +156,19 @@ void loop() {
   }
 
   delay(200);
+
+  // RFID
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial()) return;
+
+  Serial.print("UID: ");
+  printUid(rfid.uid);
+  Serial.println();
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+
+  delay(300);
 }
 
 // Motor movement functions
@@ -174,4 +206,13 @@ void stopMotors() {
 
   digitalWrite(IN3, LOW);
   digitalWrite(IN4, LOW);
+}
+
+// Print UID function
+void printUid(const MFRC522::Uid &uid) {
+  for (byte i = 0; i < uid.size; i++) {
+    if (uid.uidByte[i] < 0x10) Serial.print("0");
+    Serial.print(uid.uidByte[i], HEX);
+    if (i + 1 < uid.size) Serial.print(":");
+  }
 }
