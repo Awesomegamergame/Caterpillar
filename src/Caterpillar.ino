@@ -2,6 +2,7 @@
 #include <LiquidCrystal_I2C.h>   // Library for I2C LCD
 #include <SPI.h>
 #include <MFRC522.h>
+#include "Sound.h"
 
 // I2C connections
 // SDA -> A4
@@ -9,6 +10,12 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // LCD address and size
 
 void printUid(const MFRC522::Uid &uid);
+
+// Passive buzzer / speaker
+// Wire: BUZZER_PIN -> (+) buzzer, other pin -> GND (optional 100-220Ω series resistor)
+const uint8_t BUZZER_PIN = A1;
+
+Sound buzzer(BUZZER_PIN);
 
 // Ultrasonic sensor pins
 const int trigLeft = 2;
@@ -23,11 +30,8 @@ const int echoRight = 5;
 #define IN3 9
 #define IN4 10
 
-int distanceLeft;
-int distanceRight;
-
-int followRange = 40;   // Maximum distance to follow (cm)
-int stopRange = 10;     // Minimum safe distance (cm)
+const int followRange = 40;   // Maximum distance to follow (cm)
+const int stopRange = 10;     // Minimum safe distance (cm)
 
 // RC522 RFID
 //Pins for RC522:
@@ -75,18 +79,22 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
 
+  buzzer.begin();
+
   // Initialize RFID
   SPI.begin();
   rfid.PCD_Init();
   Serial.println("RC522 ready. Tap a tag/card...");
+
+  //buzzer.playMelody();
 }
 
 
 void loop() {
 
   // Measure distances
-  distanceLeft = measureDistance(trigLeft, echoLeft);
-  distanceRight = measureDistance(trigRight, echoRight);
+  const int distanceLeft = measureDistance(trigLeft, echoLeft);
+  const int distanceRight = measureDistance(trigRight, echoRight);
 
   // Serial output
   Serial.print("Left: ");
@@ -158,17 +166,17 @@ void loop() {
   delay(200);
 
   // RFID
-  if (!rfid.PICC_IsNewCardPresent()) return;
-  if (!rfid.PICC_ReadCardSerial()) return;
 
-  Serial.print("UID: ");
-  printUid(rfid.uid);
-  Serial.println();
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    Serial.print("UID: ");
+    printUid(rfid.uid);
+    Serial.println();
 
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
 
-  delay(300);
+    delay(300);
+  }
 }
 
 // Motor movement functions
