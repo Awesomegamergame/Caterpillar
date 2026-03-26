@@ -1,5 +1,9 @@
 #include "Sound.h"
 
+
+//TODO: figure out a better way to store the music data so multiple different melodies can be added into a single file and be called
+// without having multiple class files for each one repeating the same code.
+
 // Notes used by the melody (Hz)
 static const uint16_t NOTE_G4 = 392;
 static const uint16_t NOTE_A4 = 440;
