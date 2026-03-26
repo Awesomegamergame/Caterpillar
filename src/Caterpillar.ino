@@ -85,8 +85,6 @@ void setup() {
   SPI.begin();
   rfid.PCD_Init();
   Serial.println("RC522 ready. Tap a tag/card...");
-
-  //buzzer.playMelody();
 }
 
 
@@ -166,7 +164,6 @@ void loop() {
   delay(200);
 
   // RFID
-
   if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
     Serial.print("UID: ");
     printUid(rfid.uid);
