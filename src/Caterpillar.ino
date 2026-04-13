@@ -3,6 +3,7 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include "Sound.h"
+#include "LedMatrix.h"
 
 // I2C connections
 // SDA -> A4
@@ -10,12 +11,29 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // LCD address and size
 
 void printUid(const MFRC522::Uid &uid);
+int measureDistance(int trigPin, int echoPin);
+void moveForward();
+void turnLeft();
+void turnRight();
+void stopMotors();
+void updateDistanceDisplay(int distanceLeft, int distanceRight);
+void applyMotionFromDistances(int distanceLeft, int distanceRight);
+void readAndHandleRfid();
 
 // Passive buzzer / speaker
 // Wire: BUZZER_PIN -> (+) buzzer, other pin -> GND (optional 100-220Ω series resistor)
 const uint8_t BUZZER_PIN = A1;
 
 Sound buzzer(BUZZER_PIN);
+
+// MAX7219 matrix pins.
+// DIN and CLK are shared with SPI pins used by RC522.
+const uint8_t MATRIX_DIN_PIN = 11;
+const uint8_t MATRIX_CLK_PIN = 13;
+const uint8_t MATRIX_CS_PIN = A2;
+const uint8_t EYE_BRIGHTNESS = 0; // 0 (dimmest) to 15 (brightest)
+
+EyeMatrix eye(MATRIX_DIN_PIN, MATRIX_CLK_PIN, MATRIX_CS_PIN);
 
 // Ultrasonic sensor pins
 const int trigLeft = 2;
@@ -25,13 +43,15 @@ const int trigRight = 4;
 const int echoRight = 5;
 
 // Motor driver pins (H-bridge)
-#define IN1 6
-#define IN2 7
-#define IN3 9
-#define IN4 10
+constexpr uint8_t IN1 = 6;
+constexpr uint8_t IN2 = 7;
+constexpr uint8_t IN3 = 9;
+constexpr uint8_t IN4 = 10;
 
 const int followRange = 40;   // Maximum distance to follow (cm)
 const int stopRange = 10;     // Minimum safe distance (cm)
+const unsigned long CONTROL_INTERVAL_MS = 200;
+unsigned long lastControlMs = 0;
 
 // RC522 RFID
 //Pins for RC522:
@@ -56,9 +76,7 @@ int measureDistance(int trigPin, int echoPin) {
 
   long duration = pulseIn(echoPin, HIGH);
 
-  int distance = duration * 0.034 / 2;
-
-  return distance;
+  return static_cast<int>(duration * 0.034 / 2);
 }
 
 void setup() {
@@ -80,6 +98,8 @@ void setup() {
   pinMode(IN4, OUTPUT);
 
   buzzer.begin();
+  eye.begin();
+  eye.setBrightness(EYE_BRIGHTNESS);
 
   // Initialize RFID
   SPI.begin();
@@ -90,90 +110,88 @@ void setup() {
 
 void loop() {
 
-  // Measure distances
-  const int distanceLeft = measureDistance(trigLeft, echoLeft);
-  const int distanceRight = measureDistance(trigRight, echoRight);
+  eye.update();
 
-  // Serial output
+  const unsigned long now = millis();
+  if ((now - lastControlMs) >= CONTROL_INTERVAL_MS) {
+    lastControlMs = now;
+
+    const int distanceLeft = measureDistance(trigLeft, echoLeft);
+    const int distanceRight = measureDistance(trigRight, echoRight);
+
+    updateDistanceDisplay(distanceLeft, distanceRight);
+    applyMotionFromDistances(distanceLeft, distanceRight);
+  }
+
+  readAndHandleRfid();
+}
+
+void updateDistanceDisplay(int distanceLeft, int distanceRight) {
   Serial.print("Left: ");
   Serial.print(distanceLeft);
   Serial.print(" cm | Right: ");
   Serial.print(distanceRight);
   Serial.println(" cm");
 
-
-  // Display distances on LCD
   lcd.setCursor(0,0);
   lcd.print("L:");
   lcd.print(distanceLeft);
   lcd.print(" R:");
   lcd.print(distanceRight);
   lcd.print("   "); // clears extra digits
+}
 
-  // Move forward
+void applyMotionFromDistances(int distanceLeft, int distanceRight) {
   if (distanceLeft < followRange && distanceRight < followRange &&
       distanceLeft > stopRange && distanceRight > stopRange) {
-
-      Serial.println("Move Forward");
-      lcd.setCursor(0,1);
-      lcd.print("Forward       ");
-
-      moveForward();
+    Serial.println("Move Forward");
+    lcd.setCursor(0,1);
+    lcd.print("Forward       ");
+    moveForward();
+    return;
   }
 
-  // Turn left
-  else if (distanceLeft < distanceRight && distanceLeft < followRange) {
-
-      Serial.println("Turn Left");
-      lcd.setCursor(0,1);
-      lcd.print("Turn Left     ");
-
-      turnLeft();
+  if (distanceLeft < distanceRight && distanceLeft < followRange) {
+    Serial.println("Turn Left");
+    lcd.setCursor(0,1);
+    lcd.print("Turn Left     ");
+    turnLeft();
+    return;
   }
 
-  // Turn right
-  else if (distanceRight < distanceLeft && distanceRight < followRange) {
-
-      Serial.println("Turn Right");
-      lcd.setCursor(0,1);
-      lcd.print("Turn Right    ");
-
-      turnRight();
+  if (distanceRight < distanceLeft && distanceRight < followRange) {
+    Serial.println("Turn Right");
+    lcd.setCursor(0,1);
+    lcd.print("Turn Right    ");
+    turnRight();
+    return;
   }
 
-  // Stop if too close
-  else if (distanceLeft <= stopRange || distanceRight <= stopRange) {
-
-      Serial.println("Stop - Too Close");
-      lcd.setCursor(0,1);
-      lcd.print("Too Close     ");
-
-      stopMotors();
+  if (distanceLeft <= stopRange || distanceRight <= stopRange) {
+    Serial.println("Stop - Too Close");
+    lcd.setCursor(0,1);
+    lcd.print("Too Close     ");
+    stopMotors();
+    return;
   }
 
-  // Idle if nothing detected
-  else {
+  Serial.println("Idle");
+  lcd.setCursor(0,1);
+  lcd.print("No Target     ");
+  stopMotors();
+}
 
-      Serial.println("Idle");
-      lcd.setCursor(0,1);
-      lcd.print("No Target     ");
-
-      stopMotors();
+void readAndHandleRfid() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
+    return;
   }
 
-  delay(200);
+  Serial.print("UID: ");
+  printUid(rfid.uid);
+  Serial.println();
 
-  // RFID
-  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-    Serial.print("UID: ");
-    printUid(rfid.uid);
-    Serial.println();
-
-    rfid.PICC_HaltA();
-    rfid.PCD_StopCrypto1();
-
-    delay(300);
-  }
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
 }
 
 // Motor movement functions
