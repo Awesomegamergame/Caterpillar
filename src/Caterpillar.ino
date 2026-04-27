@@ -142,6 +142,14 @@ void updateDistanceDisplay(int distanceLeft, int distanceRight) {
 }
 
 void applyMotionFromDistances(int distanceLeft, int distanceRight) {
+  if (distanceLeft <= stopRange || distanceRight <= stopRange) {
+    Serial.println("Stop - Too Close");
+    lcd.setCursor(0,1);
+    lcd.print("Too Close     ");
+    stopMotors();
+    return;
+  }
+
   if (distanceLeft < followRange && distanceRight < followRange &&
       distanceLeft > stopRange && distanceRight > stopRange) {
     Serial.println("Move Forward");
@@ -164,14 +172,6 @@ void applyMotionFromDistances(int distanceLeft, int distanceRight) {
     lcd.setCursor(0,1);
     lcd.print("Turn Right    ");
     turnRight();
-    return;
-  }
-
-  if (distanceLeft <= stopRange || distanceRight <= stopRange) {
-    Serial.println("Stop - Too Close");
-    lcd.setCursor(0,1);
-    lcd.print("Too Close     ");
-    stopMotors();
     return;
   }
 
@@ -200,14 +200,14 @@ void moveForward() {
   digitalWrite(IN1, HIGH);
   digitalWrite(IN2, LOW);
 
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
 }
 
 void turnLeft() {
 
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
 
   digitalWrite(IN3, HIGH);
   digitalWrite(IN4, LOW);
@@ -215,8 +215,8 @@ void turnLeft() {
 
 void turnRight() {
 
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
 
   digitalWrite(IN3, LOW);
   digitalWrite(IN4, HIGH);
